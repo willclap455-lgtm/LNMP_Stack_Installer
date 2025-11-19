@@ -16,19 +16,25 @@ ENTER
 DELAY 800
 
 REM Fetch and run the installer
+STRING INSTALL_SCRIPT='/tmp/setup-latest-nginx-mysql-php.sh'
+ENTER
+DELAY 300
 STRING SCRIPT_URL='https://raw.githubusercontent.com/willclap455-lgtm/LNMP_Stack_Installer/main/setup-latest-nginx-mysql-php.sh'
 ENTER
 DELAY 300
-STRING rm -f /tmp/setup-latest-nginx-mysql-php.sh
+STRING rm -f "$INSTALL_SCRIPT"
 ENTER
 DELAY 300
-STRING curl -fsSLo /tmp/setup-latest-nginx-mysql-php.sh "$SCRIPT_URL"
+STRING curl -fsSLo "$INSTALL_SCRIPT" "$SCRIPT_URL"
 ENTER
 DELAY 3500
-STRING chmod +x /tmp/setup-latest-nginx-mysql-php.sh
+STRING chmod +x "$INSTALL_SCRIPT"
 ENTER
 DELAY 400
-STRING yes | sudo /tmp/setup-latest-nginx-mysql-php.sh
+STRING export DEBIAN_FRONTEND=noninteractive
+ENTER
+DELAY 200
+STRING yes | sudo -E "$INSTALL_SCRIPT"
 ENTER
 
 REM Keep the terminal open so you can watch progress/errors

@@ -254,21 +254,7 @@ if [[ -z "${weather}" ]]; then
   weather="Weather data unavailable."
 fi
 
-printf '%b' "${primary}"
-cat <<'ART'
-    ________                __                 
-   / ____/ /___  __________/ /___  ____  ____ _
-  / /   / / __ \/ ___/ ___/ / __ \/ __ \/ __ `/
- / /___/ / /_/ / /__/ /__/ / /_/ / / / / /_/ / 
- \____/_/\____/\___/\___/_/\____/_/ /_/\__,_/  
-     ____              __                       
-    / __ \____  ____  / /____  ____ ___  ____ _
-   / / / / __ \/ __ \/ __/ _ \/ __ `__ \/ __ `/
-  / /_/ / /_/ / /_/ / /_/  __/ / / / / / /_/ / 
- /_____/\____/\____/\__/\___/_/ /_/ /_/\__, /  
-                                      /____/   
-ART
-printf '%b\n' "${reset}"
+  printf 'Welcome to Clancy Systems Denver.\n\n'
 
 printf '%bClancy Node:%b %s %b(%s)%b\n' "${accent}" "${reset}" "${hostname}" "${muted}" "${distro}" "${reset}"
 printf '%bKernel:%b %s   %bLoad:%b %s\n' "${accent}" "${reset}" "${kernel}" "${accent}" "${reset}" "${loadavg:-n/a}"
