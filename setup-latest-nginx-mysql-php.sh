@@ -90,6 +90,17 @@ setup_php_repo() {
   add-apt-repository -y ppa:ondrej/php
 }
 
+setup_java_repo() {
+  log "Configuring Eclipse Temurin (Adoptium) Java repository..."
+  local keyring="/etc/apt/keyrings/adoptium-archive-keyring.gpg"
+  install -d -m 0755 /etc/apt/keyrings
+  curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --dearmor -o "${keyring}"
+  chmod 0644 "${keyring}"
+  cat <<EOF >/etc/apt/sources.list.d/adoptium-official.list
+deb [signed-by=${keyring}] https://packages.adoptium.net/artifactory/deb ${CODENAME} main
+EOF
+}
+
 install_nginx() {
   log "Installing latest stable NGINX..."
   apt-get install -y nginx
@@ -157,6 +168,11 @@ install_all_php_extensions() {
   apt-get install -y "${all_extensions[@]}"
 }
 
+install_java_stack() {
+  log "Installing latest stable Eclipse Temurin JDK/JRE..."
+  apt-get install -y temurin-21-jdk temurin-21-jre
+}
+
 main() {
   require_root
   ensure_dependencies
@@ -185,6 +201,13 @@ main() {
     log "Skipping PHP repository setup."
   fi
 
+    if prompt_yes_no "Add the Eclipse Temurin (Adoptium) Java repository?" "Y"; then
+      setup_java_repo
+      repos_added=1
+    else
+      log "Skipping Java repository setup."
+    fi
+
   if [[ "${repos_added}" -eq 1 ]]; then
     log "Refreshing package cache to include new repositories..."
     apt-get update
@@ -209,6 +232,12 @@ main() {
   else
     log "PHP installation skipped."
   fi
+
+    if prompt_yes_no "Install the latest stable Eclipse Temurin JDK and JRE now?" "Y"; then
+      install_java_stack
+    else
+      log "Java installation skipped."
+    fi
 
   log "All requested actions have completed."
 }
