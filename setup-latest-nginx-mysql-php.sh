@@ -90,6 +90,15 @@ setup_php_repo() {
   add-apt-repository -y ppa:ondrej/php
 }
 
+setup_java_repo() {
+  log "Configuring Eclipse Temurin (Adoptium) Java repository..."
+  local keyring="/etc/apt/keyrings/adoptium-archive-keyring.gpg"
+  install -d -m 0755 /etc/apt/keyrings
+  curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --dearmor -o "${keyring}"
+  chmod 0644 "${keyring}"
+  cat <<EOF >/etc/apt/sources.list.d/adoptium-official.list
+deb [signed-by=${keyring}] https://packages.adoptium.net/artifactory/deb ${CODENAME} main
+EOF
 setup_git_repo() {
   log "Adding the Git Core PPA (ppa:git-core/ppa)..."
   add-apt-repository -y ppa:git-core/ppa
@@ -186,6 +195,9 @@ install_all_php_extensions() {
   apt-get install -y "${all_extensions[@]}"
 }
 
+install_java_stack() {
+  log "Installing latest stable Eclipse Temurin JDK/JRE..."
+  apt-get install -y temurin-21-jdk temurin-21-jre
 install_network_tooling() {
   log "Installing net-tools and DNS utilities..."
   apt-get install -y --no-install-recommends \
@@ -275,6 +287,12 @@ main() {
     log "Skipping PHP repository setup."
   fi
 
+    if prompt_yes_no "Add the Eclipse Temurin (Adoptium) Java repository?" "Y"; then
+      setup_java_repo
+      repos_added=1
+    else
+      log "Skipping Java repository setup."
+    fi
   if prompt_yes_no "Add the Git Core PPA (ppa:git-core/ppa) for the latest Git?" "Y"; then
     setup_git_repo
     repos_added=1
@@ -319,6 +337,11 @@ main() {
     log "PHP installation skipped."
   fi
 
+    if prompt_yes_no "Install the latest stable Eclipse Temurin JDK and JRE now?" "Y"; then
+      install_java_stack
+    else
+      log "Java installation skipped."
+    fi
   if prompt_yes_no "Install net-tools and DNS utilities (whois, ping, dig)?" "Y"; then
     install_network_tooling
   else
