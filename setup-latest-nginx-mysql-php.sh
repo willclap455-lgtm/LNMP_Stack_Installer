@@ -56,8 +56,13 @@ detect_codename() {
     echo "Unable to determine Ubuntu codename (VERSION_CODENAME missing)." >&2
     exit 1
   fi
+  if [[ -z "${VERSION_ID:-}" ]]; then
+    echo "Unable to determine Ubuntu VERSION_ID (required for Microsoft repository setup)." >&2
+    exit 1
+  fi
   CODENAME="${VERSION_CODENAME}"
-  log "Detected Ubuntu codename: ${CODENAME}"
+  UBUNTU_VERSION_ID="${VERSION_ID}"
+  log "Detected Ubuntu release: ${UBUNTU_VERSION_ID} (${CODENAME})"
 }
 
 setup_nginx_repo() {
@@ -90,6 +95,17 @@ setup_php_repo() {
   add-apt-repository -y ppa:ondrej/php
 }
 
+setup_microsoft_packages_repo() {
+  log "Configuring Microsoft package repository for .NET and PowerShell..."
+  if [[ -z "${UBUNTU_VERSION_ID:-}" ]]; then
+    echo "Ubuntu VERSION_ID was not detected; cannot configure Microsoft repository." >&2
+    exit 1
+  fi
+  local packages_deb
+  packages_deb="$(mktemp)"
+  curl -fsSL "https://packages.microsoft.com/config/ubuntu/${UBUNTU_VERSION_ID}/packages-microsoft-prod.deb" -o "${packages_deb}"
+  dpkg -i "${packages_deb}"
+  rm -f "${packages_deb}"
 setup_java_repo() {
   log "Configuring Eclipse Temurin (Adoptium) Java repository..."
   local keyring="/etc/apt/keyrings/adoptium-archive-keyring.gpg"
@@ -195,6 +211,29 @@ install_all_php_extensions() {
   apt-get install -y "${all_extensions[@]}"
 }
 
+install_latest_dotnet_sdk() {
+  log "Installing latest stable .NET SDK..."
+  local sdk_candidates=()
+  mapfile -t sdk_candidates < <(
+    apt-cache search --names-only 'dotnet-sdk-' 2>/dev/null |
+      awk '{print $1}' |
+      grep -E '^dotnet-sdk-[0-9]+\.[0-9]+$' |
+      sort -V
+  ) || true
+
+  if [[ "${#sdk_candidates[@]}" -eq 0 ]]; then
+    echo "No dotnet-sdk packages were found in the configured repositories." >&2
+    return 1
+  fi
+
+  local latest_sdk="${sdk_candidates[${#sdk_candidates[@]}-1]}"
+  log "Installing package ${latest_sdk}..."
+  apt-get install -y "${latest_sdk}"
+}
+
+install_powershell() {
+  log "Installing PowerShell..."
+  apt-get install -y powershell
 install_java_stack() {
   log "Installing latest stable Eclipse Temurin JDK/JRE..."
   apt-get install -y temurin-21-jdk temurin-21-jre
@@ -287,6 +326,11 @@ main() {
     log "Skipping PHP repository setup."
   fi
 
+  if prompt_yes_no "Add the Microsoft repository for .NET and PowerShell?" "Y"; then
+    setup_microsoft_packages_repo
+    repos_added=1
+  else
+    log "Skipping Microsoft repository setup."
     if prompt_yes_no "Add the Eclipse Temurin (Adoptium) Java repository?" "Y"; then
       setup_java_repo
       repos_added=1
@@ -337,6 +381,16 @@ main() {
     log "PHP installation skipped."
   fi
 
+  if prompt_yes_no "Install the latest stable .NET SDK now?" "Y"; then
+    install_latest_dotnet_sdk
+  else
+    log ".NET installation skipped."
+  fi
+
+  if prompt_yes_no "Install PowerShell now?" "Y"; then
+    install_powershell
+  else
+    log "PowerShell installation skipped."
     if prompt_yes_no "Install the latest stable Eclipse Temurin JDK and JRE now?" "Y"; then
       install_java_stack
     else
