@@ -157,6 +157,34 @@ install_all_php_extensions() {
   apt-get install -y "${all_extensions[@]}"
 }
 
+install_neovim() {
+  log "Installing latest stable Neovim from GitHub releases..."
+
+  local tmpdir
+  tmpdir="$(mktemp -d)"
+  local archive="${tmpdir}/nvim-linux64.tar.gz"
+  local install_dir="/opt/nvim-linux64"
+  local download_url="https://github.com/neovim/neovim/releases/latest/download/nvim-linux64.tar.gz"
+
+  log "Downloading Neovim archive..."
+  curl -fsSL -o "${archive}" "${download_url}"
+
+  log "Extracting Neovim archive..."
+  tar -xzf "${archive}" -C "${tmpdir}"
+
+  log "Placing Neovim under ${install_dir}..."
+  install -d /opt
+  rm -rf "${install_dir}"
+  mv "${tmpdir}/nvim-linux64" "${install_dir}"
+
+  log "Linking Neovim binary into /usr/local/bin..."
+  install -d /usr/local/bin
+  ln -sf "${install_dir}/bin/nvim" /usr/local/bin/nvim
+
+  rm -rf "${tmpdir}"
+  log "Neovim installation complete: $(/usr/local/bin/nvim --version | head -n 1)"
+}
+
 main() {
   require_root
   ensure_dependencies
@@ -208,6 +236,12 @@ main() {
     install_php_stack
   else
     log "PHP installation skipped."
+  fi
+
+  if prompt_yes_no "Install the latest stable Neovim release from GitHub now?" "Y"; then
+    install_neovim
+  else
+    log "Neovim installation skipped."
   fi
 
   log "All requested actions have completed."
