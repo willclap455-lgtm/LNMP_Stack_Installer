@@ -2,6 +2,8 @@
 set -euo pipefail
 
 export DEBIAN_FRONTEND="${DEBIAN_FRONTEND:-noninteractive}"
+DOWNLOAD_DIR="${DOWNLOAD_DIR:-/tmp/downloads}"
+MEDIAWIKI_URL="${MEDIAWIKI_URL:-https://releases.wikimedia.org/mediawiki/latest/mediawiki-latest.tar.gz}"
 
 log() {
   printf '\n[%s] %s\n' "$(date +'%Y-%m-%d %H:%M:%S')" "$*"
@@ -157,6 +159,42 @@ install_all_php_extensions() {
   apt-get install -y "${all_extensions[@]}"
 }
 
+ensure_transfer_tool_repo() {
+  log "Confirming Ubuntu apt repositories provide curl and wget..."
+  if ! apt-cache --names-only search '^curl$' >/dev/null; then
+    log "Refreshing apt cache to ensure curl is discoverable..."
+    apt-get update
+  fi
+}
+
+install_curl_wget_if_missing() {
+  log "Ensuring curl and wget are installed..."
+  local missing=()
+  if ! command -v curl >/dev/null 2>&1; then
+    missing+=("curl")
+  fi
+  if ! command -v wget >/dev/null 2>&1; then
+    missing+=("wget")
+  fi
+
+  if [[ "${#missing[@]}" -eq 0 ]]; then
+    log "curl and wget are already present."
+    return
+  fi
+
+  apt-get install -y "${missing[@]}"
+}
+
+download_latest_mediawiki() {
+  local archive_name
+  archive_name="$(basename "${MEDIAWIKI_URL}")"
+  install -d -m 0755 "${DOWNLOAD_DIR}"
+  local destination="${DOWNLOAD_DIR}/${archive_name}"
+
+  log "Downloading latest MediaWiki archive to ${destination}..."
+  wget -nv -O "${destination}" "${MEDIAWIKI_URL}"
+}
+
 main() {
   require_root
   ensure_dependencies
@@ -209,6 +247,10 @@ main() {
   else
     log "PHP installation skipped."
   fi
+
+  ensure_transfer_tool_repo
+  install_curl_wget_if_missing
+  download_latest_mediawiki
 
   log "All requested actions have completed."
 }
