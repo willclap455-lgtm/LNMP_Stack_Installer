@@ -213,6 +213,75 @@ install_all_php_extensions() {
   apt-get install -y "${all_extensions[@]}"
 }
 
+configure_custom_motd() {
+  log "Configuring custom Clancy Systems MOTD..."
+
+  local motd_dir="/etc/update-motd.d"
+  local motd_script="${motd_dir}/10-clancy-systems"
+
+  install -d -m 0755 "${motd_dir}"
+
+  cat <<'EOF' >"${motd_script}"
+#!/usr/bin/env bash
+
+primary=$'\e[38;5;208m'
+accent=$'\e[38;5;39m'
+muted=$'\e[38;5;250m'
+highlight=$'\e[38;5;82m'
+reset=$'\e[0m'
+
+hostname="$(hostname -f 2>/dev/null || hostname)"
+kernel="$(uname -sr)"
+distro="$(lsb_release -ds 2>/dev/null || uname -s)"
+uptime_display="$(uptime -p 2>/dev/null)"
+if [[ -n "${uptime_display}" ]]; then
+  uptime_display="${uptime_display#up }"
+else
+  uptime_display="$(uptime | sed 's/.*up \([^,]*\), .*/\1/')"
+fi
+loadavg="$(cut -d ' ' -f1-3 /proc/loadavg 2>/dev/null)"
+datetime="$(date '+%A, %B %d %Y %H:%M:%S %Z')"
+users="$(who | awk '{print $1}' | sort -u | wc -l | tr -d ' ')"
+[[ -z "${users}" ]] && users="0"
+memory="$(free -h 2>/dev/null | awk '/^Mem:/ {print $3\" / \"$2\" used\"}')"
+disk="$(df -h / 2>/dev/null | awk 'NR==2 {print $3\" / \"$2\" used\"}')"
+last_login="$(last -n 2 -w "$USER" 2>/dev/null | tail -n 1)"
+if [[ -z "${last_login// }" ]]; then
+  last_login="No previous login recorded."
+fi
+weather="$(curl -fs --max-time 4 'https://wttr.in/Denver?format=3' 2>/dev/null || true)"
+if [[ -z "${weather}" ]]; then
+  weather="Weather data unavailable."
+fi
+
+printf '%b' "${primary}"
+cat <<'ART'
+    ________                __                 
+   / ____/ /___  __________/ /___  ____  ____ _
+  / /   / / __ \/ ___/ ___/ / __ \/ __ \/ __ `/
+ / /___/ / /_/ / /__/ /__/ / /_/ / / / / /_/ / 
+ \____/_/\____/\___/\___/_/\____/_/ /_/\__,_/  
+     ____              __                       
+    / __ \____  ____  / /____  ____ ___  ____ _
+   / / / / __ \/ __ \/ __/ _ \/ __ `__ \/ __ `/
+  / /_/ / /_/ / /_/ / /_/  __/ / / / / / /_/ / 
+ /_____/\____/\____/\__/\___/_/ /_/ /_/\__, /  
+                                      /____/   
+ART
+printf '%b\n' "${reset}"
+
+printf '%bClancy Node:%b %s %b(%s)%b\n' "${accent}" "${reset}" "${hostname}" "${muted}" "${distro}" "${reset}"
+printf '%bKernel:%b %s   %bLoad:%b %s\n' "${accent}" "${reset}" "${kernel}" "${accent}" "${reset}" "${loadavg:-n/a}"
+printf '%bUptime:%b %s   %bUsers:%b %s\n' "${accent}" "${reset}" "${uptime_display}" "${accent}" "${reset}" "${users}"
+printf '%bMemory:%b %s   %bRoot FS:%b %s\n' "${accent}" "${reset}" "${memory:-n/a}" "${accent}" "${reset}" "${disk:-n/a}"
+printf '%bDate:%b %s\n' "${accent}" "${reset}" "${datetime}"
+printf '%bLast Login:%b %s\n' "${accent}" "${reset}" "${last_login}"
+printf '%bDenver Weather:%b %s\n' "${accent}" "${reset}" "${weather}"
+printf '%bEnjoy your session!%b\n' "${highlight}" "${reset}"
+EOF
+
+  chmod 0755 "${motd_script}"
+  log "Custom MOTD installed at ${motd_script}"
 ensure_transfer_tool_repo() {
   log "Confirming Ubuntu apt repositories provide curl and wget..."
   if ! apt-cache --names-only search '^curl$' >/dev/null; then
@@ -443,6 +512,10 @@ main() {
     log "PHP installation skipped."
   fi
 
+  if prompt_yes_no "Install the custom Clancy Systems login MOTD?" "Y"; then
+    configure_custom_motd
+  else
+    log "Custom MOTD installation skipped."
   ensure_transfer_tool_repo
   install_curl_wget_if_missing
   download_latest_mediawiki
