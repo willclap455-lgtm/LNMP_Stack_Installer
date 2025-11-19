@@ -157,6 +157,15 @@ install_all_php_extensions() {
   apt-get install -y "${all_extensions[@]}"
 }
 
+install_network_tooling() {
+  log "Installing net-tools and DNS utilities..."
+  apt-get install -y --no-install-recommends \
+    net-tools \
+    dnsutils \
+    whois \
+    iputils-ping
+}
+
 main() {
   require_root
   ensure_dependencies
@@ -208,6 +217,12 @@ main() {
     install_php_stack
   else
     log "PHP installation skipped."
+  fi
+
+  if prompt_yes_no "Install net-tools and DNS utilities (whois, ping, dig)?" "Y"; then
+    install_network_tooling
+  else
+    log "Network tooling installation skipped."
   fi
 
   log "All requested actions have completed."
