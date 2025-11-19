@@ -1,0 +1,43 @@
+REM LNMP Stack installer launched from Flipper Zero (Ubuntu Server TTY)
+REM Tested layout: US
+DEFAULT_DELAY 200
+DELAY 1000
+
+REM Ensure we are at a shell prompt
+ENTER
+DELAY 400
+STRING clear
+ENTER
+DELAY 600
+
+REM Prime sudo credentials (replace PASSWORD_HERE or remove next two lines)
+STRING sudo -v
+ENTER
+DELAY 500
+STRING PASSWORD_HERE
+ENTER
+DELAY 800
+
+REM Fetch and run the installer
+STRING INSTALL_SCRIPT='/tmp/setup-latest-nginx-mysql-php.sh'
+ENTER
+DELAY 300
+STRING SCRIPT_URL='https://raw.githubusercontent.com/willclap455-lgtm/LNMP_Stack_Installer/main/setup-latest-nginx-mysql-php.sh'
+ENTER
+DELAY 300
+STRING rm -f "$INSTALL_SCRIPT"
+ENTER
+DELAY 300
+STRING curl -fsSLo "$INSTALL_SCRIPT" "$SCRIPT_URL"
+ENTER
+DELAY 3500
+STRING chmod +x "$INSTALL_SCRIPT"
+ENTER
+DELAY 400
+STRING export DEBIAN_FRONTEND=noninteractive
+ENTER
+DELAY 200
+STRING yes | sudo -E "$INSTALL_SCRIPT"
+ENTER
+
+REM Keep the terminal open so you can watch progress/errors
