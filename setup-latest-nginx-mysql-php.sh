@@ -90,6 +90,22 @@ setup_php_repo() {
   add-apt-repository -y ppa:ondrej/php
 }
 
+setup_git_repo() {
+  log "Adding the Git Core PPA (ppa:git-core/ppa)..."
+  add-apt-repository -y ppa:git-core/ppa
+}
+
+setup_docker_repo() {
+  log "Configuring the official Docker repository..."
+  local keyring="/etc/apt/keyrings/docker-official.gpg"
+  local arch
+  arch="$(dpkg --print-architecture)"
+  install -d -m 0755 /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o "${keyring}"
+  chmod 0644 "${keyring}"
+  cat <<EOF >/etc/apt/sources.list.d/docker-official.list
+deb [arch=${arch} signed-by=${keyring}] https://download.docker.com/linux/ubuntu ${CODENAME} stable
+EOF
 setup_python_repo() {
   log "Enabling Deadsnakes Python PPA..."
   add-apt-repository -y ppa:deadsnakes/ppa
@@ -105,6 +121,14 @@ install_mysql() {
   log "Installing latest stable MySQL Server..."
   apt-get install -y mysql-server mysql-client mysql-shell
   systemctl enable --now mysql
+}
+
+install_git() {
+  log "Installing the latest Git toolchain..."
+  apt-get install -y git git-lfs
+  if command -v git-lfs >/dev/null 2>&1; then
+    git lfs install --system >/dev/null 2>&1 || true
+  fi
 }
 
 install_php_stack() {
@@ -162,6 +186,10 @@ install_all_php_extensions() {
   apt-get install -y "${all_extensions[@]}"
 }
 
+install_docker() {
+  log "Installing Docker Engine, CLI, and plugins..."
+  apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  systemctl enable --now docker
 install_python_stack() {
   log "Installing Python 3 runtimes and tooling..."
   local -a python_packages=(
@@ -240,6 +268,18 @@ main() {
     log "Skipping PHP repository setup."
   fi
 
+  if prompt_yes_no "Add the Git Core PPA (ppa:git-core/ppa) for the latest Git?" "Y"; then
+    setup_git_repo
+    repos_added=1
+  else
+    log "Skipping Git repository setup."
+  fi
+
+  if prompt_yes_no "Add the official Docker Engine repository from download.docker.com?" "Y"; then
+    setup_docker_repo
+    repos_added=1
+  else
+    log "Skipping Docker repository setup."
   if prompt_yes_no "Add the Deadsnakes Python repository (ppa:deadsnakes/ppa)?" "Y"; then
     setup_python_repo
     repos_added=1
@@ -272,6 +312,16 @@ main() {
     log "PHP installation skipped."
   fi
 
+  if prompt_yes_no "Install the latest Git and Git LFS packages now?" "Y"; then
+    install_git
+  else
+    log "Git installation skipped."
+  fi
+
+  if prompt_yes_no "Install Docker Engine, CLI, and plugins now?" "Y"; then
+    install_docker
+  else
+    log "Docker installation skipped."
   if prompt_yes_no "Install Python 3, pip, and common Python packages (including ngxtop) now?" "Y"; then
     install_python_stack
   else
