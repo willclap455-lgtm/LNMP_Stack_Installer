@@ -410,8 +410,15 @@ install_all_php_extensions() {
     return
   fi
 
-  local php_minor_version
-  php_minor_version="$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')"
+  local php_minor_version=""
+  if ! php_minor_version="$(PHP_INI_SCAN_DIR= php -n -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;' 2>/dev/null)"; then
+    log "Unable to query PHP minor version (php CLI failing); skipping extension sweep."
+    return
+  fi
+  if [[ -z "${php_minor_version}" ]]; then
+    log "PHP minor version detection returned an empty result; skipping extension sweep."
+    return
+  fi
   local regex="^php${php_minor_version//./\\.}-"
 
   log "Discovering all available PHP ${php_minor_version} extensions..."
@@ -583,9 +590,15 @@ ensure_transfer_tool_repo() {
 }
 
 detect_installed_php_minor_version() {
-  if command -v php >/dev/null 2>&1; then
-    php -r 'printf("%d.%d", PHP_MAJOR_VERSION, PHP_MINOR_VERSION);'
+  if ! command -v php >/dev/null 2>&1; then
+    return 0
   fi
+
+  local detected_version=""
+  if detected_version="$(PHP_INI_SCAN_DIR= php -n -r 'printf("%d.%d", PHP_MAJOR_VERSION, PHP_MINOR_VERSION);' 2>/dev/null)"; then
+    printf '%s' "${detected_version}"
+  fi
+
   return 0
 }
 
