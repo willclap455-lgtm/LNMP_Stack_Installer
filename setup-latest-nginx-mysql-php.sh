@@ -79,18 +79,18 @@ deb-src [signed-by=${keyring}] http://nginx.org/packages/ubuntu/ ${CODENAME} ngi
 EOF
 }
 
-setup_mysql_repo() {
-  log "Configuring official MySQL repository..."
-  local keyring="/etc/apt/keyrings/mysql-apt-keyring.gpg"
-  install -d -m 0755 /etc/apt/keyrings
-  curl -fsSL https://repo.mysql.com/RPM-GPG-KEY-mysql-2022 | gpg --dearmor -o "${keyring}"
-  chmod 0644 "${keyring}"
-  cat <<EOF >/etc/apt/sources.list.d/mysql-community.list
-deb [signed-by=${keyring}] http://repo.mysql.com/apt/ubuntu/ ${CODENAME} mysql-apt-config
-deb [signed-by=${keyring}] http://repo.mysql.com/apt/ubuntu/ ${CODENAME} mysql-8.4-lts
-deb [signed-by=${keyring}] http://repo.mysql.com/apt/ubuntu/ ${CODENAME} mysql-tools
-EOF
-}
+# setup_mysql_repo() {
+#   log "Configuring official MySQL repository..."
+#   local keyring="/etc/apt/keyrings/mysql-apt-keyring.gpg"
+#   install -d -m 0755 /etc/apt/keyrings
+#   curl -fsSL https://repo.mysql.com/RPM-GPG-KEY-mysql-2022 | gpg --dearmor -o "${keyring}"
+#   chmod 0644 "${keyring}"
+#   cat <<EOF >/etc/apt/sources.list.d/mysql-community.list
+# deb [signed-by=${keyring}] http://repo.mysql.com/apt/ubuntu/ ${CODENAME} mysql-apt-config
+# deb [signed-by=${keyring}] http://repo.mysql.com/apt/ubuntu/ ${CODENAME} mysql-8.4-lts
+# deb [signed-by=${keyring}] http://repo.mysql.com/apt/ubuntu/ ${CODENAME} mysql-tools
+# EOF
+# }
 
 setup_php_repo() {
   log "Enabling Ondřej Surý PHP PPA..."
@@ -150,11 +150,11 @@ install_nginx() {
   systemctl enable --now nginx
 }
 
-install_mysql() {
-  log "Installing latest stable MySQL Server..."
-  apt-get install -y mysql-server mysql-client mysql-shell
-  systemctl enable --now mysql
-}
+# install_mysql() {
+#   log "Installing latest stable MySQL Server..."
+#   apt-get install -y mysql-server mysql-client mysql-shell
+#   systemctl enable --now mysql
+# }
 
 install_git() {
   log "Installing the latest Git toolchain..."
@@ -449,12 +449,13 @@ main() {
     log "Skipping NGINX repository setup."
   fi
 
-  if prompt_yes_no "Add the official MySQL Community repository from repo.mysql.com?" "Y"; then
-    setup_mysql_repo
-    repos_added=1
-  else
-    log "Skipping MySQL repository setup."
-  fi
+  # Temporarily disabled due to upstream MySQL apt GPG signature issues (NO_PUBKEY B7B3B788A8D3785C).
+  # if prompt_yes_no "Add the official MySQL Community repository from repo.mysql.com?" "Y"; then
+  #   setup_mysql_repo
+  #   repos_added=1
+  # else
+  #   log "Skipping MySQL repository setup."
+  # fi
 
   if prompt_yes_no "Add the Ondřej Surý PHP repository (ppa:ondrej/php)?" "Y"; then
     setup_php_repo
@@ -511,11 +512,12 @@ main() {
     log "NGINX installation skipped."
   fi
 
-  if prompt_yes_no "Install the latest stable MySQL Server package set now?" "Y"; then
-    install_mysql
-  else
-    log "MySQL installation skipped."
-  fi
+  # Temporarily disabled due to upstream MySQL apt GPG signature issues (NO_PUBKEY B7B3B788A8D3785C).
+  # if prompt_yes_no "Install the latest stable MySQL Server package set now?" "Y"; then
+  #   install_mysql
+  # else
+  #   log "MySQL installation skipped."
+  # fi
 
   if prompt_yes_no "Install PHP, FPM, and every available PHP extension now?" "Y"; then
     install_php_stack
