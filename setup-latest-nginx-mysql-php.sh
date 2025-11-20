@@ -71,7 +71,7 @@ setup_nginx_repo() {
   log "Configuring official NGINX repository..."
   local keyring="/etc/apt/keyrings/nginx-archive-keyring.gpg"
   install -d -m 0755 /etc/apt/keyrings
-  curl -fsSL https://nginx.org/keys/nginx_signing.key | gpg --dearmor -o "${keyring}"
+  curl -fsSL https://nginx.org/keys/nginx_signing.key | gpg --batch --yes --dearmor -o "${keyring}"
   chmod 0644 "${keyring}"
   cat <<EOF >/etc/apt/sources.list.d/nginx-official.list
 deb [signed-by=${keyring}] http://nginx.org/packages/ubuntu/ ${CODENAME} nginx
@@ -114,7 +114,7 @@ setup_java_repo() {
   log "Configuring Eclipse Temurin (Adoptium) Java repository..."
   local keyring="/etc/apt/keyrings/adoptium-archive-keyring.gpg"
   install -d -m 0755 /etc/apt/keyrings
-  curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --dearmor -o "${keyring}"
+  curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --batch --yes --dearmor -o "${keyring}"
   chmod 0644 "${keyring}"
   cat <<EOF >/etc/apt/sources.list.d/adoptium-official.list
 deb [signed-by=${keyring}] https://packages.adoptium.net/artifactory/deb ${CODENAME} main
@@ -132,7 +132,7 @@ setup_docker_repo() {
   local arch
   arch="$(dpkg --print-architecture)"
   install -d -m 0755 /etc/apt/keyrings
-  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o "${keyring}"
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --batch --yes --dearmor -o "${keyring}"
   chmod 0644 "${keyring}"
   cat <<EOF >/etc/apt/sources.list.d/docker-official.list
 deb [arch=${arch} signed-by=${keyring}] https://download.docker.com/linux/ubuntu ${CODENAME} stable
@@ -148,7 +148,7 @@ setup_postgresql_repo() {
   log "Configuring PostgreSQL Global Development Group (PGDG) repository..."
   local keyring="/etc/apt/keyrings/pgdg-archive-keyring.gpg"
   install -d -m 0755 /etc/apt/keyrings
-  curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o "${keyring}"
+  curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --batch --yes --dearmor -o "${keyring}"
   chmod 0644 "${keyring}"
   cat <<EOF >/etc/apt/sources.list.d/pgdg-official.list
 deb [signed-by=${keyring}] http://apt.postgresql.org/pub/repos/apt/ ${CODENAME}-pgdg main
