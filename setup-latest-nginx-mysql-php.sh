@@ -625,10 +625,27 @@ else
 fi
 loadavg="$(cut -d ' ' -f1-3 /proc/loadavg 2>/dev/null)"
 datetime="$(date '+%A, %B %d %Y %H:%M:%S %Z')"
-users="$(who | awk '{print $1}' | sort -u | wc -l | tr -d ' ')"
-[[ -z "${users}" ]] && users="0"
-memory="$(free -h 2>/dev/null | awk '/^Mem:/ {print $3\" / \"$2\" used\"}')"
-disk="$(df -h / 2>/dev/null | awk 'NR==2 {print $3\" / \"$2\" used\"}')"
+  users="$(who | awk '{print $1}' | sort -u | wc -l | tr -d ' ')"
+  [[ -z "${users}" ]] && users="0"
+
+  memory="n/a"
+  if command -v free >/dev/null 2>&1; then
+    memory="$(free -h 2>/dev/null | awk '/^Mem:/ {print $3\" / \"$2\" used\"}')"
+  fi
+  if [[ -z "${memory// }" && -r /proc/meminfo ]]; then
+    mem_total="$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null)"
+    mem_avail="$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo 2>/dev/null)"
+    if [[ -n "${mem_total}" && -n "${mem_avail}" ]]; then
+      mem_used=$(( (mem_total - mem_avail) / 1024 ))
+      mem_total_mb=$(( mem_total / 1024 ))
+      memory="${mem_used}Mi / ${mem_total_mb}Mi used"
+    fi
+  fi
+
+  disk="n/a"
+  if df_line="$(df -h --output=used,size / 2>/dev/null | tail -n 1)"; then
+    disk="$(awk '{print $1\" / \"$2\" used\"}' <<<"${df_line}")"
+  fi
 last_login="$(last -n 2 -w "$USER" 2>/dev/null | tail -n 1)"
 if [[ -z "${last_login// }" ]]; then
   last_login="No previous login recorded."
@@ -641,17 +658,44 @@ fi
 printf 'Welcome to Clancy Systems Denver.\n\n'
 
 printf '%bClancy Node:%b %s %b(%s)%b\n' "${accent}" "${reset}" "${hostname}" "${muted}" "${distro}" "${reset}"
-printf '%bKernel:%b %s   %bLoad:%b %s\n' "${accent}" "${reset}" "${kernel}" "${accent}" "${reset}" "${loadavg:-n/a}"
-printf '%bUptime:%b %s   %bUsers:%b %s\n' "${accent}" "${reset}" "${uptime_display}" "${accent}" "${reset}" "${users}"
-printf '%bMemory:%b %s   %bRoot FS:%b %s\n' "${accent}" "${reset}" "${memory:-n/a}" "${accent}" "${reset}" "${disk:-n/a}"
+  printf '%bKernel:%b %s   %bLoad:%b %s\n' "${accent}" "${reset}" "${kernel}" "${accent}" "${reset}" "${loadavg:-n/a}"
+  printf '%bUptime:%b %s   %bUsers:%b %s\n' "${accent}" "${reset}" "${uptime_display}" "${accent}" "${reset}" "${users}"
+  printf '%bMemory:%b %s   %bRoot FS:%b %s\n' "${accent}" "${reset}" "${memory:-n/a}" "${accent}" "${reset}" "${disk:-n/a}"
 printf '%bDate:%b %s\n' "${accent}" "${reset}" "${datetime}"
 printf '%bLast Login:%b %s\n' "${accent}" "${reset}" "${last_login}"
 printf '%bDenver Weather:%b %s\n' "${accent}" "${reset}" "${weather}"
 printf '%bEnjoy your session!%b\n' "${highlight}" "${reset}"
 EOF
 
-  chmod 0755 "${motd_script}"
-  log "Custom MOTD installed at ${motd_script}"
+    chmod 0755 "${motd_script}"
+
+    local -a motd_allowlist=(
+      "$(basename "${motd_script}")"
+      "90-updates-available"
+      "91-release-upgrade"
+    )
+    declare -A motd_allow_map=()
+    local entry=""
+    for entry in "${motd_allowlist[@]}"; do
+      motd_allow_map["${entry}"]=1
+    done
+
+    shopt -s nullglob
+    local existing_script=""
+    for existing_script in "${motd_dir}"/*; do
+      [[ -f "${existing_script}" ]] || continue
+      local base_name=""
+      base_name="$(basename "${existing_script}")"
+      if [[ -n "${motd_allow_map[${base_name}]:-}" ]]; then
+        continue
+      fi
+      if [[ -x "${existing_script}" ]]; then
+        chmod 0644 "${existing_script}"
+      fi
+    done
+    shopt -u nullglob
+
+    log "Custom MOTD installed at ${motd_script}; non-update snippets disabled."
 }
 
 ensure_transfer_tool_repo() {
