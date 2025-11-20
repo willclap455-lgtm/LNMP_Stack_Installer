@@ -195,16 +195,16 @@ install_php_stack() {
     php-soap \
     php-ldap \
     php-imagick \
-    php-opcache \
     php-redis \
     php-pspell \
     php-snmp \
     php-tidy \
-    php-xsl \
     php-pgsql \
     php-sqlite3 \
     php-enchant
 
+  install_versioned_php_virtual "opcache"
+  install_versioned_php_virtual "xsl"
   install_all_php_extensions
 }
 
@@ -228,6 +228,39 @@ install_all_php_extensions() {
 
   log "Installing ${#all_extensions[@]} PHP ${php_minor_version} extensions..."
   apt-get install -y "${all_extensions[@]}"
+}
+
+find_latest_versioned_php_package() {
+  local suffix="${1:?missing suffix for php package discovery}"
+  local pattern="^php[0-9.]+-${suffix}$"
+  mapfile -t versioned_packages < <(
+    apt-cache --names-only search "${pattern}" 2>/dev/null |
+      awk '{print $1}' |
+      sort -V
+  ) || true
+
+  if [[ "${#versioned_packages[@]}" -eq 0 ]]; then
+    return 1
+  fi
+
+  local latest_package=""
+  for pkg in "${versioned_packages[@]}"; do
+    latest_package="${pkg}"
+  done
+
+  printf '%s\n' "${latest_package}"
+}
+
+install_versioned_php_virtual() {
+  local suffix="${1:?missing suffix for virtual php package install}"
+  local package_name
+  if ! package_name="$(find_latest_versioned_php_package "${suffix}")"; then
+    log "No versioned php package found to satisfy php-${suffix}; skipping."
+    return 0
+  fi
+
+  log "Installing ${package_name} to satisfy php-${suffix} virtual package..."
+  apt-get install -y "${package_name}"
 }
 
 configure_custom_motd() {
