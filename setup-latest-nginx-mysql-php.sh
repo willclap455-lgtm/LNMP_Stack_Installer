@@ -965,6 +965,28 @@ install_docker() {
   systemctl enable --now docker
 }
 
+resolve_python_distutils_package() {
+  local base_pkg="python3-distutils"
+  if apt-cache --names-only show "${base_pkg}" >/dev/null 2>&1; then
+    printf '%s' "${base_pkg}"
+    return 0
+  fi
+
+  local -a candidates=()
+  mapfile -t candidates < <(
+    apt-cache --names-only search '^python3\.[0-9]+-distutils$' 2>/dev/null |
+      awk '{print $1}' |
+      sort -V
+  ) || true
+
+  if [[ "${#candidates[@]}" -eq 0 ]]; then
+    return 1
+  fi
+
+  printf '%s' "${candidates[${#candidates[@]}-1]}"
+  return 0
+}
+
 install_python_stack() {
   log "Installing Python 3 runtimes and tooling..."
   local -a python_packages=(
@@ -972,14 +994,44 @@ install_python_stack() {
     python3-venv
     python3-dev
     python3-pip
-    python3-distutils
     python3-setuptools
     python3-wheel
     python-is-python3
     build-essential
   )
 
-  apt-get install -y "${python_packages[@]}"
+  local distutils_pkg=""
+  if distutils_pkg="$(resolve_python_distutils_package)"; then
+    python_packages+=("${distutils_pkg}")
+  else
+    log "No python*-distutils package found in current apt sources; continuing without it."
+  fi
+
+  local -a available_python_packages=()
+  local -a missing_python_packages=()
+
+  local pkg
+  for pkg in "${python_packages[@]}"; do
+    if apt-cache --names-only show "${pkg}" >/dev/null 2>&1; then
+      available_python_packages+=("${pkg}")
+    else
+      missing_python_packages+=("${pkg}")
+    fi
+  done
+
+  if [[ "${#available_python_packages[@]}" -eq 0 ]]; then
+    log "None of the requested Python runtime packages are available; skipping Python installation."
+    return
+  fi
+
+  if [[ "${#missing_python_packages[@]}" -gt 0 ]]; then
+    log "Skipping unavailable Python packages: ${missing_python_packages[*]}"
+  fi
+
+  if ! apt-get install -y "${available_python_packages[@]}"; then
+    log "Python runtime installation failed; skipping pip package installation."
+    return
+  fi
 
   if ! command -v python3 >/dev/null 2>&1; then
     log "Python 3 installation failed; skipping pip package installation."
