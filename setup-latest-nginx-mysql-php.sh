@@ -4,6 +4,38 @@ set -euo pipefail
 export DEBIAN_FRONTEND="${DEBIAN_FRONTEND:-noninteractive}"
 DOWNLOAD_DIR="${DOWNLOAD_DIR:-/tmp/downloads}"
 MEDIAWIKI_URL="${MEDIAWIKI_URL:-https://releases.wikimedia.org/mediawiki/latest/mediawiki-latest.tar.gz}"
+PHP_TARGET_MINOR_VERSION=""
+PHP_FALLBACK_MINOR_VERSION="${PHP_FALLBACK_MINOR_VERSION:-8.3}"
+
+readonly -a PHP_BASE_PACKAGES=(
+  php-cli
+  php-fpm
+  php-common
+  php-mysql
+  php-dev
+  php-pear
+  php-curl
+  php-zip
+  php-gd
+  php-mbstring
+  php-xml
+  php-bcmath
+  php-intl
+  php-soap
+  php-ldap
+  php-imagick
+  php-redis
+  php-pspell
+  php-snmp
+  php-tidy
+  php-pgsql
+  php-sqlite3
+  php-enchant
+)
+
+readonly -a NON_VERSIONED_PHP_PACKAGES=(
+  php-pear
+)
 
 log() {
   printf '\n[%s] %s\n' "$(date +'%Y-%m-%d %H:%M:%S')" "$*"
@@ -278,30 +310,30 @@ install_git() {
 
 install_php_stack() {
   log "Installing PHP base packages..."
-  apt-get install -y \
-    php-cli \
-    php-fpm \
-    php-common \
-    php-mysql \
-    php-dev \
-    php-pear \
-    php-curl \
-    php-zip \
-    php-gd \
-    php-mbstring \
-    php-xml \
-    php-bcmath \
-    php-intl \
-    php-soap \
-    php-ldap \
-    php-imagick \
-    php-redis \
-    php-pspell \
-    php-snmp \
-    php-tidy \
-    php-pgsql \
-    php-sqlite3 \
-    php-enchant
+
+  if install_php_packages_for_version ""; then
+    PHP_TARGET_MINOR_VERSION="$(detect_installed_php_minor_version)"
+  else
+    log "Primary PHP installation attempt failed; purging broken packages and retrying with fallback version..."
+    purge_broken_php_packages
+    if install_php_packages_for_version "${PHP_FALLBACK_MINOR_VERSION}"; then
+      PHP_TARGET_MINOR_VERSION="${PHP_FALLBACK_MINOR_VERSION}"
+    else
+      echo "PHP installation failed, even after attempting fallback to PHP ${PHP_FALLBACK_MINOR_VERSION}." >&2
+      return 1
+    fi
+  fi
+
+  if [[ -z "${PHP_TARGET_MINOR_VERSION:-}" ]]; then
+    PHP_TARGET_MINOR_VERSION="$(detect_installed_php_minor_version)"
+  fi
+
+  if [[ -n "${PHP_TARGET_MINOR_VERSION:-}" ]]; then
+    log "Using PHP ${PHP_TARGET_MINOR_VERSION} as the active runtime."
+    ensure_php_alternative "${PHP_TARGET_MINOR_VERSION}"
+  else
+    log "Unable to determine the installed PHP version; proceeding without adjusting alternatives."
+  fi
 
   install_versioned_php_virtual "opcache"
   install_versioned_php_virtual "xsl"
@@ -383,6 +415,15 @@ find_latest_versioned_php_package() {
 install_versioned_php_virtual() {
   local suffix="${1:?missing suffix for virtual php package install}"
   local package_name
+  if [[ -n "${PHP_TARGET_MINOR_VERSION:-}" ]]; then
+    local pinned_candidate="php${PHP_TARGET_MINOR_VERSION}-${suffix}"
+    if apt-cache show "${pinned_candidate}" >/dev/null 2>&1; then
+      log "Installing ${pinned_candidate} to satisfy php-${suffix} virtual package..."
+      apt-get install -y "${pinned_candidate}"
+      return 0
+    fi
+  fi
+
   if ! package_name="$(find_latest_versioned_php_package "${suffix}")"; then
     log "No versioned php package found to satisfy php-${suffix}; skipping."
     return 0
@@ -455,6 +496,119 @@ ensure_transfer_tool_repo() {
     log "Refreshing apt cache to ensure curl is discoverable..."
     apt-get update
   fi
+}
+
+detect_installed_php_minor_version() {
+  if command -v php >/dev/null 2>&1; then
+    php -r 'printf("%d.%d", PHP_MAJOR_VERSION, PHP_MINOR_VERSION);'
+  fi
+  return 0
+}
+
+ensure_php_alternative() {
+  local minor_version="${1:-}"
+  [[ -z "${minor_version}" ]] && return 0
+
+  local php_binary="/usr/bin/php${minor_version}"
+  if [[ ! -x "${php_binary}" ]]; then
+    return 0
+  fi
+
+  if update-alternatives --list php >/dev/null 2>&1; then
+    update-alternatives --set php "${php_binary}" >/dev/null 2>&1 || true
+  else
+    update-alternatives --install /usr/bin/php php "${php_binary}" 100 >/dev/null 2>&1 || true
+  fi
+
+  return 0
+}
+
+is_non_versioned_php_package() {
+  local package="${1:-}"
+  local candidate
+  for candidate in "${NON_VERSIONED_PHP_PACKAGES[@]}"; do
+    if [[ "${package}" == "${candidate}" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+build_php_package_list_for_version() {
+  local minor_version="${1:-}"
+  if [[ -z "${minor_version}" ]]; then
+    printf '%s\n' "${PHP_BASE_PACKAGES[@]}"
+    return 0
+  fi
+
+  local pkg
+  for pkg in "${PHP_BASE_PACKAGES[@]}"; do
+    if [[ "${pkg}" == php-* ]] && ! is_non_versioned_php_package "${pkg}"; then
+      local candidate="php${minor_version}${pkg#php}"
+      if apt-cache show "${candidate}" >/dev/null 2>&1; then
+        printf '%s\n' "${candidate}"
+        continue
+      fi
+    fi
+    printf '%s\n' "${pkg}"
+  done
+}
+
+install_php_packages_for_version() {
+  local minor_version="${1:-}"
+  local -a packages=()
+  if [[ -n "${minor_version}" ]]; then
+    mapfile -t packages < <(build_php_package_list_for_version "${minor_version}")
+    log "Installing PHP ${minor_version} packages..."
+  else
+    packages=("${PHP_BASE_PACKAGES[@]}")
+    log "Installing PHP packages via distribution meta packages..."
+  fi
+
+  if [[ "${#packages[@]}" -eq 0 ]]; then
+    log "No PHP packages resolved for installation."
+    return 1
+  fi
+
+  if ! apt-get install -y "${packages[@]}"; then
+    return 1
+  fi
+
+  return 0
+}
+
+purge_broken_php_packages() {
+  log "Checking for partially installed PHP packages to purge..."
+  local failed_version=""
+  failed_version="$(
+    dpkg -l 'php[0-9]*-fpm' 2>/dev/null |
+      awk 'NR>=6 && $1!="un"{gsub(/^php/,"",$2); gsub(/-fpm$/,"",$2); print $2}' |
+      sort -Vr |
+      head -n1 || true
+  )"
+  failed_version="${failed_version//[$'\n\r ']}"
+
+  if [[ -z "${failed_version}" ]]; then
+    log "No partially installed PHP-FPM packages were detected."
+    return 0
+  fi
+
+  local -a packages_to_purge=()
+  mapfile -t packages_to_purge < <(
+    dpkg -l "php${failed_version}*" 2>/dev/null |
+      awk 'NR>=6 && $1!="un"{print $2}'
+  ) || true
+
+  if [[ "${#packages_to_purge[@]}" -eq 0 ]]; then
+    log "Detected PHP ${failed_version}, but no packages required purging."
+    return 0
+  fi
+
+  log "Purging broken PHP ${failed_version} packages: ${packages_to_purge[*]}"
+  apt-get purge -y "${packages_to_purge[@]}" || true
+  apt-get autoremove -y --purge || true
+
+  return 0
 }
 
 install_curl_wget_if_missing() {
