@@ -144,6 +144,17 @@ setup_python_repo() {
   add-apt-repository -y ppa:deadsnakes/ppa
 }
 
+setup_postgresql_repo() {
+  log "Configuring PostgreSQL Global Development Group (PGDG) repository..."
+  local keyring="/etc/apt/keyrings/pgdg-archive-keyring.gpg"
+  install -d -m 0755 /etc/apt/keyrings
+  curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o "${keyring}"
+  chmod 0644 "${keyring}"
+  cat <<EOF >/etc/apt/sources.list.d/pgdg-official.list
+deb [signed-by=${keyring}] http://apt.postgresql.org/pub/repos/apt/ ${CODENAME}-pgdg main
+EOF
+}
+
 install_nginx() {
   log "Installing latest stable NGINX..."
   apt-get install -y nginx
@@ -435,6 +446,35 @@ install_python_stack() {
   "${pip_install_base[@]}" "${common_python_packages[@]}"
 }
 
+install_postgresql_latest() {
+  log "Installing latest stable PostgreSQL server and tooling..."
+
+  local -a server_packages=()
+  mapfile -t server_packages < <(
+    apt-cache search --names-only '^postgresql-[0-9]+$' 2>/dev/null |
+      awk '{print $1}' |
+      sort -V
+  ) || true
+
+  if [[ "${#server_packages[@]}" -eq 0 ]]; then
+    echo "No versioned postgresql-* packages were found (repository missing?)." >&2
+    return 1
+  fi
+
+  local latest_server_package="${server_packages[${#server_packages[@]}-1]}"
+  local latest_version="${latest_server_package#postgresql-}"
+
+  log "Discovered latest PostgreSQL version ${latest_version}; installing..."
+
+  apt-get install -y \
+    "postgresql-${latest_version}" \
+    "postgresql-client-${latest_version}" \
+    "postgresql-contrib-${latest_version}" \
+    libpq-dev
+
+  systemctl enable --now postgresql
+}
+
 main() {
   require_root
   ensure_dependencies
@@ -499,6 +539,13 @@ main() {
     log "Skipping Python repository setup."
   fi
 
+  if prompt_yes_no "Add the PostgreSQL Global Development Group (PGDG) repository for the latest PostgreSQL releases?" "Y"; then
+    setup_postgresql_repo
+    repos_added=1
+  else
+    log "Skipping PostgreSQL repository setup."
+  fi
+
   if [[ "${repos_added}" -eq 1 ]]; then
     log "Refreshing package cache to include new repositories..."
     apt-get update
@@ -523,6 +570,12 @@ main() {
     install_php_stack
   else
     log "PHP installation skipped."
+  fi
+
+  if prompt_yes_no "Install the latest stable PostgreSQL server, client, and contrib packages now?" "Y"; then
+    install_postgresql_latest
+  else
+    log "PostgreSQL installation skipped."
   fi
 
   if prompt_yes_no "Install the custom Clancy Systems login MOTD?" "Y"; then
