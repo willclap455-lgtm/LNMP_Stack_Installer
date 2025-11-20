@@ -37,6 +37,14 @@ readonly -a NON_VERSIONED_PHP_PACKAGES=(
   php-pear
 )
 
+readonly -a PHP_EXTENSION_EXCLUDE_PATTERNS=(
+  "libapache2-mod-php*"
+  "*apache*"
+  "*swoole*"
+)
+
+PHP_EXTENSION_SKIP_PATTERN_MATCH=""
+
 log() {
   printf '\n[%s] %s\n' "$(date +'%Y-%m-%d %H:%M:%S')" "$*"
 }
@@ -407,12 +415,8 @@ install_all_php_extensions() {
 
   for pkg in "${all_extensions[@]}"; do
     local skip_pkg=0
-    if [[ "${pkg}" == libapache2-mod-php* || "${pkg}" == *apache* ]]; then
-      log "Skipping ${pkg} because Apache modules are not supported."
-      continue
-    fi
-    if [[ "${pkg}" == *swoole* ]]; then
-      log "Skipping ${pkg} to avoid noisy Swoole extension installs."
+    if php_extension_should_skip "${pkg}"; then
+      log "Skipping ${pkg} because it matches excluded pattern '${PHP_EXTENSION_SKIP_PATTERN_MATCH}'."
       continue
     fi
     for excluded in "${excluded_extensions[@]}"; do
@@ -434,6 +438,22 @@ install_all_php_extensions() {
 
   log "Installing ${#filtered_extensions[@]} PHP ${php_minor_version} extensions..."
   apt-get install -y "${filtered_extensions[@]}"
+}
+
+php_extension_should_skip() {
+  local package="${1:-}"
+  PHP_EXTENSION_SKIP_PATTERN_MATCH=""
+  [[ -z "${package}" ]] && return 1
+
+  local pattern
+  for pattern in "${PHP_EXTENSION_EXCLUDE_PATTERNS[@]}"; do
+    if [[ "${package}" == ${pattern} ]]; then
+      PHP_EXTENSION_SKIP_PATTERN_MATCH="${pattern}"
+      return 0
+    fi
+  done
+
+  return 1
 }
 
 find_latest_versioned_php_package() {
