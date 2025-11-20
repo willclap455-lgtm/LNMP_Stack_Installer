@@ -1,9 +1,38 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+resolve_default_download_dir() {
+  local candidate=""
+
+  if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
+    if command -v getent >/dev/null 2>&1; then
+      candidate="$(getent passwd "${SUDO_USER}" 2>/dev/null | awk -F: 'NR==1 {print $6}')"
+    elif [[ -r /etc/passwd ]]; then
+      candidate="$(awk -F: -v user="${SUDO_USER}" '$1==user {print $6; exit}' /etc/passwd)"
+    fi
+  fi
+
+  if [[ -z "${candidate}" && -n "${HOME:-}" ]]; then
+    candidate="${HOME}"
+  fi
+
+  if [[ -z "${candidate}" && -n "${PWD:-}" ]]; then
+    candidate="${PWD}"
+  fi
+
+  if [[ -z "${candidate}" ]]; then
+    candidate="/tmp"
+  fi
+
+  printf '%s\n' "${candidate}"
+}
+
 export DEBIAN_FRONTEND="${DEBIAN_FRONTEND:-noninteractive}"
-DOWNLOAD_DIR="${DOWNLOAD_DIR:-/tmp/downloads}"
+DOWNLOAD_DIR="${DOWNLOAD_DIR:-$(resolve_default_download_dir)}"
 MEDIAWIKI_URL="${MEDIAWIKI_URL:-https://releases.wikimedia.org/mediawiki/latest/mediawiki-latest.tar.gz}"
+NEOVIM_LATEST_STATIC_URL="${NEOVIM_LATEST_STATIC_URL:-https://github.com/neovim/neovim/releases/latest/download/nvim-linux64.tar.gz}"
+NEOVIM_STABLE_STATIC_URL="${NEOVIM_STABLE_STATIC_URL:-https://github.com/neovim/neovim/releases/download/stable/nvim-linux64.tar.gz}"
+NEOVIM_ASSET_PATTERN="${NEOVIM_ASSET_PATTERN:-nvim-linux64\\.tar\\.gz}"
 PHP_TARGET_MINOR_VERSION=""
 PHP_FALLBACK_MINOR_VERSION="${PHP_FALLBACK_MINOR_VERSION:-8.3}"
 
@@ -813,25 +842,75 @@ download_latest_mediawiki() {
   wget -nv -O "${destination}" "${fallback_url}"
 }
 
+resolve_neovim_download_url() {
+  local api_url="https://api.github.com/repos/neovim/neovim/releases/latest"
+  local asset_pattern="${NEOVIM_ASSET_PATTERN}"
+  local response=""
+  local url=""
+
+  if response="$(curl -fsSL -H 'Accept: application/vnd.github+json' "${api_url}" 2>/dev/null)"; then
+    url="$(
+      printf '%s\n' "${response}" |
+        grep -oE "\"browser_download_url\":[[:space:]]*\"[^\"]*${asset_pattern}\"" |
+        head -n 1 |
+        sed -E 's/.*"browser_download_url":[[:space:]]*"([^"]+)".*/\1/'
+    )"
+    if [[ -n "${url}" ]]; then
+      printf '%s\n' "${url}"
+      return 0
+    fi
+  fi
+
+  printf '%s\n' "${NEOVIM_LATEST_STATIC_URL}"
+  return 1
+}
+
 install_neovim() {
   log "Installing latest stable Neovim from GitHub releases..."
 
   local tmpdir
   tmpdir="$(mktemp -d)"
-  local archive="${tmpdir}/nvim-linux64.tar.gz"
+  local archive="${tmpdir}/nvim.tar.gz"
   local install_dir="/opt/nvim-linux64"
-  local download_url="https://github.com/neovim/neovim/releases/latest/download/nvim-linux64.tar.gz"
+  local download_url=""
 
-  log "Downloading Neovim archive..."
-  curl -fsSL -o "${archive}" "${download_url}"
+  if ! download_url="$(resolve_neovim_download_url)"; then
+    log "Unable to query Neovim release metadata; defaulting to ${download_url}."
+  fi
+
+  log "Downloading Neovim archive from ${download_url}..."
+  if ! curl -fsSL -o "${archive}" "${download_url}"; then
+    local primary_status=$?
+    log "Primary Neovim download failed with exit code ${primary_status}; retrying with ${NEOVIM_STABLE_STATIC_URL}..."
+    rm -f "${archive}"
+    if ! curl -fsSL -o "${archive}" "${NEOVIM_STABLE_STATIC_URL}"; then
+      local secondary_status=$?
+      rm -rf "${tmpdir}"
+      echo "Failed to download Neovim archives (attempted ${download_url} and ${NEOVIM_STABLE_STATIC_URL})." >&2
+      return "${secondary_status}"
+    fi
+  fi
 
   log "Extracting Neovim archive..."
   tar -xzf "${archive}" -C "${tmpdir}"
 
+  local extracted_dir=""
+  if [[ -d "${tmpdir}/nvim-linux64" ]]; then
+    extracted_dir="${tmpdir}/nvim-linux64"
+  else
+    extracted_dir="$(find "${tmpdir}" -maxdepth 1 -mindepth 1 -type d -name 'nvim-*' -print -quit)"
+  fi
+
+  if [[ -z "${extracted_dir}" || ! -d "${extracted_dir}" ]]; then
+    echo "Unable to locate extracted Neovim directory under ${tmpdir}." >&2
+    rm -rf "${tmpdir}"
+    return 1
+  fi
+
   log "Placing Neovim under ${install_dir}..."
   install -d /opt
   rm -rf "${install_dir}"
-  mv "${tmpdir}/nvim-linux64" "${install_dir}"
+  mv "${extracted_dir}" "${install_dir}"
 
   log "Linking Neovim binary into /usr/local/bin..."
   install -d /usr/local/bin
