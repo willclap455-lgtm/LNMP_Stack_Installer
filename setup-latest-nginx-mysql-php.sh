@@ -69,6 +69,47 @@ prompt_yes_no() {
   done
 }
 
+disable_service_auto_start() {
+  local policy_path="/usr/sbin/policy-rc.d"
+  local guard_state="absent"
+  local backup_file=""
+
+  if [[ -e "${policy_path}" ]]; then
+    backup_file="$(mktemp)"
+    cp -p "${policy_path}" "${backup_file}"
+    guard_state="present"
+  fi
+
+  cat <<'EOF' >"${policy_path}"
+#!/bin/sh
+exit 101
+EOF
+  chmod 0755 "${policy_path}"
+
+  printf '%s:%s\n' "${guard_state}" "${backup_file}"
+}
+
+restore_service_auto_start() {
+  local policy_path="/usr/sbin/policy-rc.d"
+  local guard="${1:-}"
+
+  if [[ -z "${guard}" ]]; then
+    return 0
+  fi
+
+  local state=""
+  local backup_file=""
+  IFS=':' read -r state backup_file <<<"${guard}"
+
+  if [[ "${state}" == "present" && -n "${backup_file}" ]]; then
+    cp -p "${backup_file}" "${policy_path}"
+    rm -f "${backup_file}"
+  else
+    rm -f "${policy_path}"
+    [[ -n "${backup_file}" ]] && rm -f "${backup_file}"
+  fi
+}
+
 is_package_installed() {
   local package="${1:?package name required}"
   dpkg-query -W -f='${Status}' "${package}" 2>/dev/null | grep -q "ok installed"
@@ -570,7 +611,18 @@ install_php_packages_for_version() {
     return 1
   fi
 
+  log "Temporarily blocking service auto-start to keep php-fpm from starting until manually configured..."
+  local policy_guard=""
+  policy_guard="$(disable_service_auto_start)"
+
+  local apt_status=0
   if ! apt-get install -y "${packages[@]}"; then
+    apt_status=1
+  fi
+
+  restore_service_auto_start "${policy_guard}"
+
+  if [[ "${apt_status}" -ne 0 ]]; then
     return 1
   fi
 
