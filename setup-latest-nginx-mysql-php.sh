@@ -956,7 +956,8 @@ install_network_tooling() {
     net-tools \
     dnsutils \
     whois \
-    iputils-ping
+    iputils-ping \
+    btop
 }
 
 install_docker() {
