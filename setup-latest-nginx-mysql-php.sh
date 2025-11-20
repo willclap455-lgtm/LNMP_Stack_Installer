@@ -276,6 +276,11 @@ deb-src [signed-by=${keyring}] http://nginx.org/packages/ubuntu/ ${CODENAME} ngi
 EOF
 }
 
+setup_ondrej_nginx_repo() {
+  log "Enabling Ondřej Surý NGINX PPA (ppa:ondrej/nginx)..."
+  add-apt-repository -y ppa:ondrej/nginx
+}
+
 # setup_mysql_repo() {
 #   log "Configuring official MySQL repository..."
 #   local keyring="/etc/apt/keyrings/mysql-apt-keyring.gpg"
@@ -292,6 +297,8 @@ EOF
 setup_php_repo() {
   log "Enabling Ondřej Surý PHP PPA..."
   add-apt-repository -y ppa:ondrej/php
+  log "PHP PPA recommends pairing with the Ondřej NGINX PPA when using NGINX; ensuring it is configured..."
+  setup_ondrej_nginx_repo
 }
 
 setup_microsoft_packages_repo() {
