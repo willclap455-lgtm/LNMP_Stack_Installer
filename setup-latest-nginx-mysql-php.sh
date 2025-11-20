@@ -1006,7 +1006,8 @@ main() {
     log "Python installation skipped."
   fi
 
-  log "All requested actions have completed."
+    log "All requested actions have completed."
+    echo "success!"
 }
 
 main "$@"
