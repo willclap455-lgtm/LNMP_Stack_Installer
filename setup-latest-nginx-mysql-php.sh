@@ -226,8 +226,33 @@ install_all_php_extensions() {
     return
   fi
 
-  log "Installing ${#all_extensions[@]} PHP ${php_minor_version} extensions..."
-  apt-get install -y "${all_extensions[@]}"
+  local -a excluded_extensions=(
+    "php${php_minor_version}-yac"
+    "php${php_minor_version}-gmagick"
+  )
+  local -a filtered_extensions=()
+
+  for pkg in "${all_extensions[@]}"; do
+    local skip_pkg=0
+    for excluded in "${excluded_extensions[@]}"; do
+      if [[ "${pkg}" == "${excluded}" ]]; then
+        log "Skipping ${pkg} due to known dependency conflicts."
+        skip_pkg=1
+        break
+      fi
+    done
+    if [[ "${skip_pkg}" -eq 0 ]]; then
+      filtered_extensions+=("${pkg}")
+    fi
+  done
+
+  if [[ "${#filtered_extensions[@]}" -eq 0 ]]; then
+    log "All discovered PHP ${php_minor_version} extensions were excluded; nothing to install."
+    return
+  fi
+
+  log "Installing ${#filtered_extensions[@]} PHP ${php_minor_version} extensions..."
+  apt-get install -y "${filtered_extensions[@]}"
 }
 
 find_latest_versioned_php_package() {
