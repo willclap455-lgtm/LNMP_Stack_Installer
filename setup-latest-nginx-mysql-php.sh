@@ -37,6 +37,58 @@ prompt_yes_no() {
   done
 }
 
+is_package_installed() {
+  local package="${1:?package name required}"
+  dpkg-query -W -f='${Status}' "${package}" 2>/dev/null | grep -q "ok installed"
+}
+
+remove_apache2_if_present() {
+  log "Ensuring Apache HTTP Server packages are removed..."
+  local -a apache_packages=(
+    apache2
+    apache2-bin
+    apache2-data
+    apache2-utils
+    apache2-doc
+    apache2-suexec-pristine
+    apache2-suexec-custom
+    libapache2-mod-php
+    libapache2-mod-php8.4
+  )
+
+  local -a installed=()
+  local -A seen=()
+
+  for pkg in "${apache_packages[@]}"; do
+    if is_package_installed "${pkg}" && [[ -z "${seen[${pkg}]:-}" ]]; then
+      installed+=("${pkg}")
+      seen["${pkg}"]=1
+    fi
+  done
+
+  while IFS= read -r pkg; do
+    [[ -z "${pkg}" ]] && continue
+    if [[ -z "${seen[${pkg}]:-}" ]]; then
+      installed+=("${pkg}")
+      seen["${pkg}"]=1
+    fi
+  done < <(dpkg-query -W -f='${binary:Package}\n' 'libapache2-mod-php*' 2>/dev/null || true)
+
+  if [[ "${#installed[@]}" -eq 0 ]]; then
+    log "No Apache packages detected; nothing to remove."
+    return
+  fi
+
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl stop apache2 >/dev/null 2>&1 || true
+    systemctl disable apache2 >/dev/null 2>&1 || true
+  fi
+
+  log "Purging Apache packages: ${installed[*]}"
+  apt-get remove -y --purge "${installed[@]}"
+  apt-get autoremove -y
+}
+
 ensure_dependencies() {
   log "Ensuring base tooling is present..."
   apt-get update
@@ -178,7 +230,6 @@ install_git() {
 install_php_stack() {
   log "Installing PHP base packages..."
   apt-get install -y \
-    php \
     php-cli \
     php-fpm \
     php-common \
@@ -234,6 +285,10 @@ install_all_php_extensions() {
 
   for pkg in "${all_extensions[@]}"; do
     local skip_pkg=0
+    if [[ "${pkg}" == libapache2-mod-php* || "${pkg}" == *apache* ]]; then
+      log "Skipping ${pkg} because Apache modules are not supported."
+      continue
+    fi
     for excluded in "${excluded_extensions[@]}"; do
       if [[ "${pkg}" == "${excluded}" ]]; then
         log "Skipping ${pkg} due to known dependency conflicts."
@@ -604,18 +659,19 @@ main() {
     log "Skipping PostgreSQL repository setup."
   fi
 
-  if [[ "${repos_added}" -eq 1 ]]; then
-    log "Refreshing package cache to include new repositories..."
-    apt-get update
-  else
-    log "No new repositories were added; skipping apt-get update."
-  fi
+    if [[ "${repos_added}" -eq 1 ]]; then
+      log "Refreshing package cache to include new repositories..."
+      apt-get update
+    else
+      log "No new repositories were added; skipping apt-get update."
+    fi
 
-  if prompt_yes_no "Install the latest stable NGINX package set now?" "Y"; then
-    install_nginx
-  else
-    log "NGINX installation skipped."
-  fi
+    if prompt_yes_no "Install the latest stable NGINX package set now?" "Y"; then
+      remove_apache2_if_present
+      install_nginx
+    else
+      log "NGINX installation skipped."
+    fi
 
   # Temporarily disabled due to upstream MySQL apt GPG signature issues (NO_PUBKEY B7B3B788A8D3785C).
   # if prompt_yes_no "Install the latest stable MySQL Server package set now?" "Y"; then
@@ -624,11 +680,12 @@ main() {
   #   log "MySQL installation skipped."
   # fi
 
-  if prompt_yes_no "Install PHP, FPM, and every available PHP extension now?" "Y"; then
-    install_php_stack
-  else
-    log "PHP installation skipped."
-  fi
+    if prompt_yes_no "Install PHP, FPM, and every available PHP extension now?" "Y"; then
+      remove_apache2_if_present
+      install_php_stack
+    else
+      log "PHP installation skipped."
+    fi
 
   if prompt_yes_no "Install the latest stable PostgreSQL server, client, and contrib packages now?" "Y"; then
     install_postgresql_latest
