@@ -741,8 +741,7 @@ discover_latest_mediawiki_tarball_url() {
     printf '%s\n' "${listing}" |
       grep -oE 'href="[0-9]+\.[0-9]+/' |
       sed -E 's/^href="//; s/\/$//' |
-      sort -V |
-      uniq
+      LC_ALL=C sort -Vu
   ) || true
 
   if [[ "${#series_candidates[@]}" -eq 0 ]]; then
@@ -757,16 +756,32 @@ discover_latest_mediawiki_tarball_url() {
 
   mapfile -t tarballs < <(
     printf '%s\n' "${listing}" |
-      grep -oE 'mediawiki-[0-9]+\.[0-9]+(\.[0-9]+)?\.tar\.gz' |
-      sort -V |
-      uniq
+      grep -oE 'mediawiki-[0-9]+\.[0-9]+(\.[0-9]+)?(-rc\.[0-9]+)?\.tar\.gz' |
+      LC_ALL=C sort -Vu
   ) || true
 
   if [[ "${#tarballs[@]}" -eq 0 ]]; then
     return 1
   fi
 
-  local latest_tarball="${tarballs[${#tarballs[@]}-1]}"
+  local -a stable_tarballs=()
+  local -a prerelease_tarballs=()
+  local tarball
+  for tarball in "${tarballs[@]}"; do
+    if [[ "${tarball}" == *"-rc."* ]]; then
+      prerelease_tarballs+=("${tarball}")
+    else
+      stable_tarballs+=("${tarball}")
+    fi
+  done
+
+  local latest_tarball=""
+  if [[ "${#stable_tarballs[@]}" -gt 0 ]]; then
+    latest_tarball="${stable_tarballs[${#stable_tarballs[@]}-1]}"
+  else
+    latest_tarball="${prerelease_tarballs[${#prerelease_tarballs[@]}-1]}"
+  fi
+
   printf '%s/%s/%s\n' "${base_url}" "${latest_series}" "${latest_tarball}"
 }
 
@@ -777,11 +792,13 @@ download_latest_mediawiki() {
   local destination="${DOWNLOAD_DIR}/${archive_name}"
 
   log "Downloading latest MediaWiki archive to ${destination}..."
+  local primary_status=0
   if wget -nv -O "${destination}" "${MEDIAWIKI_URL}"; then
     return 0
+  else
+    primary_status=$?
   fi
 
-  local primary_status=$?
   rm -f "${destination}"
   log "Primary MediaWiki URL ${MEDIAWIKI_URL} failed with exit code ${primary_status}; attempting fallback discovery..."
 
