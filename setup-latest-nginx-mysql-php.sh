@@ -108,6 +108,8 @@ setup_microsoft_packages_repo() {
   curl -fsSL "https://packages.microsoft.com/config/ubuntu/${UBUNTU_VERSION_ID}/packages-microsoft-prod.deb" -o "${packages_deb}"
   dpkg -i "${packages_deb}"
   rm -f "${packages_deb}"
+}
+
 setup_java_repo() {
   log "Configuring Eclipse Temurin (Adoptium) Java repository..."
   local keyring="/etc/apt/keyrings/adoptium-archive-keyring.gpg"
@@ -117,6 +119,8 @@ setup_java_repo() {
   cat <<EOF >/etc/apt/sources.list.d/adoptium-official.list
 deb [signed-by=${keyring}] https://packages.adoptium.net/artifactory/deb ${CODENAME} main
 EOF
+}
+
 setup_git_repo() {
   log "Adding the Git Core PPA (ppa:git-core/ppa)..."
   add-apt-repository -y ppa:git-core/ppa
@@ -133,6 +137,8 @@ setup_docker_repo() {
   cat <<EOF >/etc/apt/sources.list.d/docker-official.list
 deb [arch=${arch} signed-by=${keyring}] https://download.docker.com/linux/ubuntu ${CODENAME} stable
 EOF
+}
+
 setup_python_repo() {
   log "Enabling Deadsnakes Python PPA..."
   add-apt-repository -y ppa:deadsnakes/ppa
@@ -254,7 +260,7 @@ if [[ -z "${weather}" ]]; then
   weather="Weather data unavailable."
 fi
 
-  printf 'Welcome to Clancy Systems Denver.\n\n'
+printf 'Welcome to Clancy Systems Denver.\n\n'
 
 printf '%bClancy Node:%b %s %b(%s)%b\n' "${accent}" "${reset}" "${hostname}" "${muted}" "${distro}" "${reset}"
 printf '%bKernel:%b %s   %bLoad:%b %s\n' "${accent}" "${reset}" "${kernel}" "${accent}" "${reset}" "${loadavg:-n/a}"
@@ -268,6 +274,8 @@ EOF
 
   chmod 0755 "${motd_script}"
   log "Custom MOTD installed at ${motd_script}"
+}
+
 ensure_transfer_tool_repo() {
   log "Confirming Ubuntu apt repositories provide curl and wget..."
   if ! apt-cache --names-only search '^curl$' >/dev/null; then
@@ -302,6 +310,8 @@ download_latest_mediawiki() {
 
   log "Downloading latest MediaWiki archive to ${destination}..."
   wget -nv -O "${destination}" "${MEDIAWIKI_URL}"
+}
+
 install_neovim() {
   log "Installing latest stable Neovim from GitHub releases..."
 
@@ -328,6 +338,8 @@ install_neovim() {
 
   rm -rf "${tmpdir}"
   log "Neovim installation complete: $(/usr/local/bin/nvim --version | head -n 1)"
+}
+
 install_latest_dotnet_sdk() {
   log "Installing latest stable .NET SDK..."
   local sdk_candidates=()
@@ -351,9 +363,13 @@ install_latest_dotnet_sdk() {
 install_powershell() {
   log "Installing PowerShell..."
   apt-get install -y powershell
+}
+
 install_java_stack() {
   log "Installing latest stable Eclipse Temurin JDK/JRE..."
   apt-get install -y temurin-21-jdk temurin-21-jre
+}
+
 install_network_tooling() {
   log "Installing net-tools and DNS utilities..."
   apt-get install -y --no-install-recommends \
@@ -361,10 +377,14 @@ install_network_tooling() {
     dnsutils \
     whois \
     iputils-ping
+}
+
 install_docker() {
   log "Installing Docker Engine, CLI, and plugins..."
   apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
   systemctl enable --now docker
+}
+
 install_python_stack() {
   log "Installing Python 3 runtimes and tooling..."
   local -a python_packages=(
@@ -448,12 +468,15 @@ main() {
     repos_added=1
   else
     log "Skipping Microsoft repository setup."
-    if prompt_yes_no "Add the Eclipse Temurin (Adoptium) Java repository?" "Y"; then
-      setup_java_repo
-      repos_added=1
-    else
-      log "Skipping Java repository setup."
-    fi
+  fi
+
+  if prompt_yes_no "Add the Eclipse Temurin (Adoptium) Java repository?" "Y"; then
+    setup_java_repo
+    repos_added=1
+  else
+    log "Skipping Java repository setup."
+  fi
+
   if prompt_yes_no "Add the Git Core PPA (ppa:git-core/ppa) for the latest Git?" "Y"; then
     setup_git_repo
     repos_added=1
@@ -466,6 +489,8 @@ main() {
     repos_added=1
   else
     log "Skipping Docker repository setup."
+  fi
+
   if prompt_yes_no "Add the Deadsnakes Python repository (ppa:deadsnakes/ppa)?" "Y"; then
     setup_python_repo
     repos_added=1
@@ -502,13 +527,18 @@ main() {
     configure_custom_motd
   else
     log "Custom MOTD installation skipped."
+  fi
+
   ensure_transfer_tool_repo
   install_curl_wget_if_missing
   download_latest_mediawiki
+
   if prompt_yes_no "Install the latest stable Neovim release from GitHub now?" "Y"; then
     install_neovim
   else
     log "Neovim installation skipped."
+  fi
+
   if prompt_yes_no "Install the latest stable .NET SDK now?" "Y"; then
     install_latest_dotnet_sdk
   else
@@ -519,15 +549,20 @@ main() {
     install_powershell
   else
     log "PowerShell installation skipped."
-    if prompt_yes_no "Install the latest stable Eclipse Temurin JDK and JRE now?" "Y"; then
-      install_java_stack
-    else
-      log "Java installation skipped."
-    fi
+  fi
+
+  if prompt_yes_no "Install the latest stable Eclipse Temurin JDK and JRE now?" "Y"; then
+    install_java_stack
+  else
+    log "Java installation skipped."
+  fi
+
   if prompt_yes_no "Install net-tools and DNS utilities (whois, ping, dig)?" "Y"; then
     install_network_tooling
   else
     log "Network tooling installation skipped."
+  fi
+
   if prompt_yes_no "Install the latest Git and Git LFS packages now?" "Y"; then
     install_git
   else
@@ -538,6 +573,8 @@ main() {
     install_docker
   else
     log "Docker installation skipped."
+  fi
+
   if prompt_yes_no "Install Python 3, pip, and common Python packages (including ngxtop) now?" "Y"; then
     install_python_stack
   else
