@@ -30,9 +30,9 @@ resolve_default_download_dir() {
 export DEBIAN_FRONTEND="${DEBIAN_FRONTEND:-noninteractive}"
 DOWNLOAD_DIR="${DOWNLOAD_DIR:-$(resolve_default_download_dir)}"
 MEDIAWIKI_URL="${MEDIAWIKI_URL:-https://releases.wikimedia.org/mediawiki/latest/mediawiki-latest.tar.gz}"
-NEOVIM_LATEST_STATIC_URL="${NEOVIM_LATEST_STATIC_URL:-https://github.com/neovim/neovim/releases/latest/download/nvim-linux64.tar.gz}"
-NEOVIM_STABLE_STATIC_URL="${NEOVIM_STABLE_STATIC_URL:-https://github.com/neovim/neovim/releases/download/stable/nvim-linux64.tar.gz}"
-NEOVIM_ASSET_PATTERN="${NEOVIM_ASSET_PATTERN:-nvim-linux64\\.tar\\.gz}"
+NEOVIM_LATEST_STATIC_URL="${NEOVIM_LATEST_STATIC_URL:-https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.tar.gz}"
+NEOVIM_STABLE_STATIC_URL="${NEOVIM_STABLE_STATIC_URL:-https://github.com/neovim/neovim/releases/download/stable/nvim-linux-x86_64.tar.gz}"
+NEOVIM_ASSET_PATTERN="${NEOVIM_ASSET_PATTERN:-nvim-linux-x86_64\\.tar\\.gz}"
 PHP_TARGET_MINOR_VERSION=""
 PHP_FALLBACK_MINOR_VERSION="${PHP_FALLBACK_MINOR_VERSION:-8.3}"
 
@@ -1259,8 +1259,8 @@ main() {
       log "Python installation skipped."
     fi
 
-    log "Running apt-get autoremove to clean up unused packages..."
-    apt-get autoremove -y
+    log "Running sudo apt autoremove to clean up unused packages..."
+    sudo apt autoremove -y
 
     log "All requested actions have completed."
     echo "success!"
