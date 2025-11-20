@@ -411,6 +411,10 @@ install_all_php_extensions() {
       log "Skipping ${pkg} because Apache modules are not supported."
       continue
     fi
+    if [[ "${pkg}" == *swoole* ]]; then
+      log "Skipping ${pkg} to avoid noisy Swoole extension installs."
+      continue
+    fi
     for excluded in "${excluded_extensions[@]}"; do
       if [[ "${pkg}" == "${excluded}" ]]; then
         log "Skipping ${pkg} due to known dependency conflicts."
