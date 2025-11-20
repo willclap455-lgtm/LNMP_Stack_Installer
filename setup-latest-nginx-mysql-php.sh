@@ -50,10 +50,13 @@ remove_apache2_if_present() {
     apache2-data
     apache2-utils
     apache2-doc
+    apache2-dev
+    apache2-htcacheclean
+    apache2-l10n
+    apache2-ssl-dev
     apache2-suexec-pristine
     apache2-suexec-custom
     libapache2-mod-php
-    libapache2-mod-php8.4
   )
 
   local -a installed=()
@@ -66,13 +69,21 @@ remove_apache2_if_present() {
     fi
   done
 
-  while IFS= read -r pkg; do
-    [[ -z "${pkg}" ]] && continue
-    if [[ -z "${seen[${pkg}]:-}" ]]; then
-      installed+=("${pkg}")
-      seen["${pkg}"]=1
-    fi
-  done < <(dpkg-query -W -f='${binary:Package}\n' 'libapache2-mod-php*' 2>/dev/null || true)
+  local -a wildcard_patterns=(
+    'apache2*'
+    'libapache2*'
+    'libapache2-mod-php*'
+  )
+
+  for pattern in "${wildcard_patterns[@]}"; do
+    while IFS= read -r pkg; do
+      [[ -z "${pkg}" ]] && continue
+      if [[ -z "${seen[${pkg}]:-}" ]]; then
+        installed+=("${pkg}")
+        seen["${pkg}"]=1
+      fi
+    done < <(dpkg-query -W -f='${binary:Package}\n' "${pattern}" 2>/dev/null || true)
+  done
 
   if [[ "${#installed[@]}" -eq 0 ]]; then
     log "No Apache packages detected; nothing to remove."
@@ -85,8 +96,46 @@ remove_apache2_if_present() {
   fi
 
   log "Purging Apache packages: ${installed[*]}"
-  apt-get remove -y --purge "${installed[@]}"
-  apt-get autoremove -y
+  apt-get purge -y "${installed[@]}"
+  apt-get autoremove -y --purge
+
+  purge_apache2_config_leftovers
+  ensure_apache2_removed
+
+  log "Removing residual Apache directories and state files..."
+  rm -rf /etc/apache2 /var/log/apache2 /var/lib/apache2
+}
+
+purge_apache2_config_leftovers() {
+  local -a rc_packages=()
+  mapfile -t rc_packages < <(
+    dpkg -l 'apache2*' 'libapache2*' 2>/dev/null |
+      awk '$1=="rc"{print $2}' || true
+  )
+
+  if [[ "${#rc_packages[@]}" -eq 0 ]]; then
+    return
+  fi
+
+  log "Purging Apache configuration residue: ${rc_packages[*]}"
+  dpkg --purge "${rc_packages[@]}"
+}
+
+ensure_apache2_removed() {
+  local -a remaining=()
+  mapfile -t remaining < <(
+    dpkg-query -W -f='${binary:Package}\t${Status}\n' 'apache2*' 'libapache2*' 2>/dev/null |
+      awk '$2=="install" && $3=="ok" && $4=="installed"{print $1}' || true
+  )
+
+  if [[ "${#remaining[@]}" -eq 0 ]]; then
+    log "Apache packages successfully purged."
+    return
+  fi
+
+  echo "Unable to purge all Apache packages automatically. Remaining: ${remaining[*]}" >&2
+  echo "Please resolve the package state manually (dpkg -l | grep apache2) and rerun the script." >&2
+  return 1
 }
 
 ensure_dependencies() {
