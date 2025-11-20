@@ -1,6 +1,43 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+declare -a INSTALL_SUCCESSES=()
+declare -a INSTALL_FAILURES=()
+
+record_install_success() {
+  local label="${1:-unspecified component}"
+  INSTALL_SUCCESSES+=("${label}")
+}
+
+record_install_failure() {
+  local label="${1:-unspecified component}"
+  INSTALL_FAILURES+=("${label}")
+}
+
+print_install_summary() {
+  echo
+  echo "Installation summary:"
+  echo "Successfully installed:"
+  if (( ${#INSTALL_SUCCESSES[@]} > 0 )); then
+    local success_item
+    for success_item in "${INSTALL_SUCCESSES[@]}"; do
+      echo " - ${success_item}"
+    done
+  else
+    echo " - None"
+  fi
+
+  echo "Failed installations:"
+  if (( ${#INSTALL_FAILURES[@]} > 0 )); then
+    local failure_item
+    for failure_item in "${INSTALL_FAILURES[@]}"; do
+      echo " - ${failure_item}"
+    done
+  else
+    echo " - None"
+  fi
+}
+
 resolve_default_download_dir() {
   local candidate=""
 
@@ -1099,7 +1136,13 @@ install_postgresql_latest() {
 
 main() {
   require_root
-  ensure_dependencies
+  if ensure_dependencies; then
+    record_install_success "Base dependency tooling"
+  else
+    record_install_failure "Base dependency tooling"
+    echo "Failed to install base dependencies; aborting." >&2
+    exit 1
+  fi
   detect_codename
 
   local repos_added=0
@@ -1176,8 +1219,11 @@ main() {
     fi
 
     if prompt_yes_no "Install the latest stable NGINX package set now?" "Y"; then
-      remove_apache2_if_present
-      install_nginx
+      if remove_apache2_if_present && install_nginx; then
+        record_install_success "NGINX"
+      else
+        record_install_failure "NGINX"
+      fi
     else
       log "NGINX installation skipped."
     fi
@@ -1190,72 +1236,119 @@ main() {
   # fi
 
     if prompt_yes_no "Install PHP, FPM, and every available PHP extension now?" "Y"; then
-      remove_apache2_if_present
-      install_php_stack
+      if remove_apache2_if_present && install_php_stack; then
+        record_install_success "PHP stack"
+      else
+        record_install_failure "PHP stack"
+      fi
     else
       log "PHP installation skipped."
     fi
 
-  if prompt_yes_no "Install the latest stable PostgreSQL server, client, and contrib packages now?" "Y"; then
-    install_postgresql_latest
-  else
-    log "PostgreSQL installation skipped."
-  fi
+    if prompt_yes_no "Install the latest stable PostgreSQL server, client, and contrib packages now?" "Y"; then
+      if install_postgresql_latest; then
+        record_install_success "PostgreSQL"
+      else
+        record_install_failure "PostgreSQL"
+      fi
+    else
+      log "PostgreSQL installation skipped."
+    fi
 
-  if prompt_yes_no "Install the custom Clancy Systems login MOTD?" "Y"; then
-    configure_custom_motd
-  else
-    log "Custom MOTD installation skipped."
-  fi
+    if prompt_yes_no "Install the custom Clancy Systems login MOTD?" "Y"; then
+      if configure_custom_motd; then
+        record_install_success "Custom MOTD"
+      else
+        record_install_failure "Custom MOTD"
+      fi
+    else
+      log "Custom MOTD installation skipped."
+    fi
 
-  ensure_transfer_tool_repo
-  install_curl_wget_if_missing
+    ensure_transfer_tool_repo
+    if install_curl_wget_if_missing; then
+      record_install_success "curl and wget"
+    else
+      record_install_failure "curl and wget"
+    fi
   download_latest_mediawiki
 
-  if prompt_yes_no "Install the latest stable Neovim release from GitHub now?" "Y"; then
-    install_neovim
-  else
-    log "Neovim installation skipped."
-  fi
+    if prompt_yes_no "Install the latest stable Neovim release from GitHub now?" "Y"; then
+      if install_neovim; then
+        record_install_success "Neovim"
+      else
+        record_install_failure "Neovim"
+      fi
+    else
+      log "Neovim installation skipped."
+    fi
 
-  if prompt_yes_no "Install the latest stable .NET SDK now?" "Y"; then
-    install_latest_dotnet_sdk
-  else
-    log ".NET installation skipped."
-  fi
+    if prompt_yes_no "Install the latest stable .NET SDK now?" "Y"; then
+      if install_latest_dotnet_sdk; then
+        record_install_success ".NET SDK"
+      else
+        record_install_failure ".NET SDK"
+      fi
+    else
+      log ".NET installation skipped."
+    fi
 
-  if prompt_yes_no "Install PowerShell now?" "Y"; then
-    install_powershell
-  else
-    log "PowerShell installation skipped."
-  fi
+    if prompt_yes_no "Install PowerShell now?" "Y"; then
+      if install_powershell; then
+        record_install_success "PowerShell"
+      else
+        record_install_failure "PowerShell"
+      fi
+    else
+      log "PowerShell installation skipped."
+    fi
 
-  if prompt_yes_no "Install the latest stable Eclipse Temurin JDK and JRE now?" "Y"; then
-    install_java_stack
-  else
-    log "Java installation skipped."
-  fi
+    if prompt_yes_no "Install the latest stable Eclipse Temurin JDK and JRE now?" "Y"; then
+      if install_java_stack; then
+        record_install_success "Java (Temurin JDK/JRE)"
+      else
+        record_install_failure "Java (Temurin JDK/JRE)"
+      fi
+    else
+      log "Java installation skipped."
+    fi
 
-  if prompt_yes_no "Install net-tools and DNS utilities (whois, ping, dig)?" "Y"; then
-    install_network_tooling
-  else
-    log "Network tooling installation skipped."
-  fi
+    if prompt_yes_no "Install net-tools and DNS utilities (whois, ping, dig)?" "Y"; then
+      if install_network_tooling; then
+        record_install_success "Network tooling"
+      else
+        record_install_failure "Network tooling"
+      fi
+    else
+      log "Network tooling installation skipped."
+    fi
 
-  if prompt_yes_no "Install the latest Git and Git LFS packages now?" "Y"; then
-    install_git
-  else
-    log "Git installation skipped."
-  fi
+    if prompt_yes_no "Install the latest Git and Git LFS packages now?" "Y"; then
+      if install_git; then
+        record_install_success "Git and Git LFS"
+      else
+        record_install_failure "Git and Git LFS"
+      fi
+    else
+      log "Git installation skipped."
+    fi
 
-  if prompt_yes_no "Install Docker Engine, CLI, and plugins now?" "Y"; then
-    install_docker
-  else
-    log "Docker installation skipped."
-  fi
+    if prompt_yes_no "Install Docker Engine, CLI, and plugins now?" "Y"; then
+      if install_docker; then
+        record_install_success "Docker"
+      else
+        record_install_failure "Docker"
+      fi
+    else
+      log "Docker installation skipped."
+    fi
 
     if prompt_yes_no "Install Python 3, pip, and common Python packages (including ngxtop) now?" "Y"; then
-      install_python_stack
+      if install_python_stack; then
+        record_install_success "Python runtime and tooling"
+      else
+        record_install_failure "Python runtime and tooling"
+      fi
     else
       log "Python installation skipped."
     fi
@@ -1265,6 +1358,7 @@ main() {
 
     log "All requested actions have completed."
     echo "success!"
+    print_install_summary
 }
 
 main "$@"
