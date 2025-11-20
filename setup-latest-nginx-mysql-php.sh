@@ -720,6 +720,49 @@ install_curl_wget_if_missing() {
   apt-get install -y "${missing[@]}"
 }
 
+discover_latest_mediawiki_tarball_url() {
+  local base_url="https://releases.wikimedia.org/mediawiki"
+  local listing=""
+  local -a series_candidates=()
+  local -a tarballs=()
+
+  if ! listing="$(curl -fsSL "${base_url}/")"; then
+    return 1
+  fi
+
+  mapfile -t series_candidates < <(
+    printf '%s\n' "${listing}" |
+      grep -oE 'href="[0-9]+\.[0-9]+/' |
+      sed -E 's/^href="//; s/\/$//' |
+      sort -V |
+      uniq
+  ) || true
+
+  if [[ "${#series_candidates[@]}" -eq 0 ]]; then
+    return 1
+  fi
+
+  local latest_series="${series_candidates[${#series_candidates[@]}-1]}"
+
+  if ! listing="$(curl -fsSL "${base_url}/${latest_series}/")"; then
+    return 1
+  fi
+
+  mapfile -t tarballs < <(
+    printf '%s\n' "${listing}" |
+      grep -oE 'mediawiki-[0-9]+\.[0-9]+(\.[0-9]+)?\.tar\.gz' |
+      sort -V |
+      uniq
+  ) || true
+
+  if [[ "${#tarballs[@]}" -eq 0 ]]; then
+    return 1
+  fi
+
+  local latest_tarball="${tarballs[${#tarballs[@]}-1]}"
+  printf '%s/%s/%s\n' "${base_url}" "${latest_series}" "${latest_tarball}"
+}
+
 download_latest_mediawiki() {
   local archive_name
   archive_name="$(basename "${MEDIAWIKI_URL}")"
@@ -727,7 +770,23 @@ download_latest_mediawiki() {
   local destination="${DOWNLOAD_DIR}/${archive_name}"
 
   log "Downloading latest MediaWiki archive to ${destination}..."
-  wget -nv -O "${destination}" "${MEDIAWIKI_URL}"
+  if wget -nv -O "${destination}" "${MEDIAWIKI_URL}"; then
+    return 0
+  fi
+
+  local primary_status=$?
+  rm -f "${destination}"
+  log "Primary MediaWiki URL ${MEDIAWIKI_URL} failed with exit code ${primary_status}; attempting fallback discovery..."
+
+  local fallback_url=""
+  if ! fallback_url="$(discover_latest_mediawiki_tarball_url)"; then
+    echo "Failed to download MediaWiki from ${MEDIAWIKI_URL} and could not determine a fallback release URL." >&2
+    return 1
+  fi
+
+  destination="${DOWNLOAD_DIR}/$(basename "${fallback_url}")"
+  log "Downloading MediaWiki from fallback URL ${fallback_url}..."
+  wget -nv -O "${destination}" "${fallback_url}"
 }
 
 install_neovim() {
