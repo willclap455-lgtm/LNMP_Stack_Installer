@@ -9,7 +9,6 @@ PHP_FALLBACK_MINOR_VERSION="${PHP_FALLBACK_MINOR_VERSION:-8.3}"
 
 readonly -a PHP_BASE_PACKAGES=(
   php-cli
-  php-fpm
   php-common
   php-mysql
   php-dev
@@ -35,6 +34,11 @@ readonly -a PHP_BASE_PACKAGES=(
 
 readonly -a NON_VERSIONED_PHP_PACKAGES=(
   php-pear
+)
+
+readonly -a PHP_PACKAGE_DENYLIST=(
+  php-fpm
+  php8.4-fpm
 )
 
 readonly -a PHP_EXTENSION_EXCLUDE_PATTERNS=(
@@ -121,6 +125,17 @@ restore_service_auto_start() {
 is_package_installed() {
   local package="${1:?package name required}"
   dpkg-query -W -f='${Status}' "${package}" 2>/dev/null | grep -q "ok installed"
+}
+
+is_denylisted_php_package() {
+  local package="${1:-}"
+  local blocked
+  for blocked in "${PHP_PACKAGE_DENYLIST[@]}"; do
+    if [[ -n "${package}" && "${package}" == "${blocked}" ]]; then
+      return 0
+    fi
+  done
+  return 1
 }
 
 remove_apache2_if_present() {
@@ -419,6 +434,10 @@ install_all_php_extensions() {
       log "Skipping ${pkg} because it matches excluded pattern '${PHP_EXTENSION_SKIP_PATTERN_MATCH}'."
       continue
     fi
+    if is_denylisted_php_package "${pkg}"; then
+      log "Skipping ${pkg} because it is denylisted."
+      continue
+    fi
     for excluded in "${excluded_extensions[@]}"; do
       if [[ "${pkg}" == "${excluded}" ]]; then
         log "Skipping ${pkg} due to known dependency conflicts."
@@ -630,12 +649,23 @@ install_php_packages_for_version() {
     log "Installing PHP packages via distribution meta packages..."
   fi
 
+  local -a filtered_packages=()
+  local pkg
+  for pkg in "${packages[@]}"; do
+    if is_denylisted_php_package "${pkg}"; then
+      log "Skipping denylisted package ${pkg}."
+      continue
+    fi
+    filtered_packages+=("${pkg}")
+  done
+  packages=("${filtered_packages[@]}")
+
   if [[ "${#packages[@]}" -eq 0 ]]; then
     log "No PHP packages resolved for installation."
     return 1
   fi
 
-  log "Temporarily blocking service auto-start to keep php-fpm from starting until manually configured..."
+  log "Temporarily blocking service auto-start for PHP-related packages until manually configured..."
   local policy_guard=""
   policy_guard="$(disable_service_auto_start)"
 
@@ -655,35 +685,7 @@ install_php_packages_for_version() {
 
 purge_broken_php_packages() {
   log "Checking for partially installed PHP packages to purge..."
-  local failed_version=""
-  failed_version="$(
-    dpkg -l 'php[0-9]*-fpm' 2>/dev/null |
-      awk 'NR>=6 && $1!="un"{gsub(/^php/,"",$2); gsub(/-fpm$/,"",$2); print $2}' |
-      sort -Vr |
-      head -n1 || true
-  )"
-  failed_version="${failed_version//[$'\n\r ']}"
-
-  if [[ -z "${failed_version}" ]]; then
-    log "No partially installed PHP-FPM packages were detected."
-    return 0
-  fi
-
-  local -a packages_to_purge=()
-  mapfile -t packages_to_purge < <(
-    dpkg -l "php${failed_version}*" 2>/dev/null |
-      awk 'NR>=6 && $1!="un"{print $2}'
-  ) || true
-
-  if [[ "${#packages_to_purge[@]}" -eq 0 ]]; then
-    log "Detected PHP ${failed_version}, but no packages required purging."
-    return 0
-  fi
-
-  log "Purging broken PHP ${failed_version} packages: ${packages_to_purge[*]}"
-  apt-get purge -y "${packages_to_purge[@]}" || true
-  apt-get autoremove -y --purge || true
-
+  log "Skipping purge of php-fpm packages per policy."
   return 0
 }
 
