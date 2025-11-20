@@ -1122,11 +1122,14 @@ main() {
     log "Docker installation skipped."
   fi
 
-  if prompt_yes_no "Install Python 3, pip, and common Python packages (including ngxtop) now?" "Y"; then
-    install_python_stack
-  else
-    log "Python installation skipped."
-  fi
+    if prompt_yes_no "Install Python 3, pip, and common Python packages (including ngxtop) now?" "Y"; then
+      install_python_stack
+    else
+      log "Python installation skipped."
+    fi
+
+    log "Running apt-get autoremove to clean up unused packages..."
+    apt-get autoremove -y
 
     log "All requested actions have completed."
     echo "success!"
